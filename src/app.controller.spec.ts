@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -92,5 +93,84 @@ describe('User Signup (e2e)', () => {
       .send({});
     expect(res.status).toBe(400);
     expect(res.body.message).toContain('email must be an email');
+  });
+});
+
+describe('User Auth (e2e)', () => {
+  let app: INestApplication;
+  let token: string;
+  let email: string;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  it('should signup and signin successfully, then access /me', async () => {
+    email = generateUniqueEmail('Auth User');
+    // Signup
+    await request(app.getHttpServer())
+      .post('/users/signup')
+      .send({
+        name: 'Auth User',
+        email,
+        password: 'Password1!',
+      })
+      .expect(201);
+    // Signin
+    const signinRes = await request(app.getHttpServer())
+      .post('/users/signin')
+      .send({
+        email,
+        password: 'Password1!',
+      });
+    expect(signinRes.status).toBe(201);
+    expect(signinRes.body.token).toBeDefined();
+    token = signinRes.body.token;
+    // /me
+    const meRes = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.user.email).toBe(email);
+    expect(meRes.body.user.name).toBe('Auth User');
+    expect(meRes.body.user.password).toBeUndefined();
+  });
+
+  it('should fail signin with wrong password', async () => {
+    email = generateUniqueEmail('WrongPass User');
+    await request(app.getHttpServer())
+      .post('/users/signup')
+      .send({
+        name: 'WrongPass User',
+        email,
+        password: 'Password1!',
+      })
+      .expect(201);
+    const res = await request(app.getHttpServer())
+      .post('/users/signin')
+      .send({
+        email,
+        password: 'WrongPassword!',
+      });
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe('Invalid credentials');
+  });
+
+  it('should not allow /me without token', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/users/me');
+    expect(res.status).toBe(401);
+  });
+
+  it('should not allow /me with invalid token', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', 'Bearer invalidtoken');
+    expect(res.status).toBe(401);
   });
 });
