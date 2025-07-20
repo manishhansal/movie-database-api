@@ -22,7 +22,7 @@ function extractTokenFromHeader(req: Request): string | null {
   return null;
 }
 
-const GetUser = createParamDecorator((data, ctx: ExecutionContext) => {
+export const GetUser = createParamDecorator((data, ctx: ExecutionContext) => {
   const req = ctx.switchToHttp().getRequest<Request>();
   const token = extractTokenFromHeader(req);
   if (!token) throw new UnauthorizedException('No token provided');
@@ -76,19 +76,7 @@ export class UserController {
       // Return user data without password
       const userData = user.get({ plain: true });
       delete (userData as unknown as Record<string, unknown>)['password'];
-      // Generate JWT token
-      const jwtSecret = process.env.JWT_SECRET || 'secret';
-      const token = jwt.sign(
-        {
-          id: userData.id,
-          email: userData.email,
-        },
-        jwtSecret,
-        {
-          expiresIn: '1h',
-        },
-      );
-      return { user: userData, token };
+      return { user: userData };
     } catch(error: any) {
       throw new InternalServerErrorException('Signup failed', error);
     }

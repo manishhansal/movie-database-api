@@ -5,6 +5,8 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from './models/user.model';
 import { UserController } from './user/user.controller';
+import { MoviesController } from './movies/movies.controller';
+import { Movie } from './models/movie.model';
 
 @Module({
   imports: [
@@ -26,12 +28,12 @@ import { UserController } from './user/user.controller';
         database: configService.get<string>('DB_DATABASE'),
         autoLoadModels: true,
         synchronize: true,
-        models: [User],
+        models: [User, Movie],
       }),
       inject: [ConfigService],
     }),
   ],
-  controllers: [AppController, UserController],
+  controllers: [AppController, UserController, MoviesController],
   providers: [AppService],
 })
 export class AppModule {}
