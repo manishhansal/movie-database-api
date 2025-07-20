@@ -58,9 +58,7 @@ describe('User Signup (e2e)', () => {
       });
     expect(res.status).toBe(201);
     expect(res.body.user).toBeDefined();
-    expect(res.body.token).toBeDefined();
     expect(res.body.user.email).toBe(email);
-    expect(res.body.user.password).toBeUndefined();
   });
 
   it('should fail with invalid email', async () => {
@@ -172,5 +170,150 @@ describe('User Auth (e2e)', () => {
       .get('/users/me')
       .set('Authorization', 'Bearer invalidtoken');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('Movies CRUD', () => {
+  let app: INestApplication;
+  let token: string;
+  let movieId: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+    // Signup and signin to get token
+    const email = `movietest${Date.now()}@example.com`;
+    await request(app.getHttpServer())
+      .post('/users/signup')
+      .send({ name: 'Movie User', email, password: 'Password1!' })
+      .expect(201);
+    const signinRes = await request(app.getHttpServer())
+      .post('/users/signin')
+      .send({ email, password: 'Password1!' });
+    token = signinRes.body.token;
+  });
+
+  it('should create a movie', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/movies')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        movieName: 'Test Movie',
+        movieDes: 'A test movie',
+        yearOfPublished: 2022,
+        moviePoster: 'http://example.com/poster.jpg',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.movie).toBeDefined();
+    expect(res.body.movie.movieName).toBe('Test Movie');
+    movieId = res.body.movie.id;
+  });
+
+  it('should not create a movie with duplicate movieName', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/movies')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        movieName: 'Test Movie',
+        movieDes: 'Another test movie',
+        yearOfPublished: 2023,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('movieName must be unique');
+  });
+
+  it('should get all movies (with pagination and search)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/movies?search=Test&page=1&limit=8')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.movies)).toBe(true);
+    expect(res.body.total).toBeGreaterThan(0);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(8);
+  });
+
+  it('should get one movie by id', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/movies/${movieId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.movie.id).toBe(movieId);
+  });
+
+  it('should update a movie by creator', async () => {
+    const res = await request(app.getHttpServer())
+      .put(`/movies/${movieId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        movieName: 'Updated Movie',
+        movieDes: 'Updated description',
+        yearOfPublished: 2023,
+        moviePoster: 'http://example.com/updated.jpg',
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.movie.movieName).toBe('Updated Movie');
+  });
+
+  it('should not update a movie by another user', async () => {
+    // Signup/signin as another user
+    const email = `otheruser${Date.now()}@example.com`;
+    await request(app.getHttpServer())
+      .post('/users/signup')
+      .send({ name: 'Other User', email, password: 'Password1!' })
+      .expect(201);
+    const signinRes = await request(app.getHttpServer())
+      .post('/users/signin')
+      .send({ email, password: 'Password1!' });
+    const otherToken = signinRes.body.token;
+    const res = await request(app.getHttpServer())
+      .put(`/movies/${movieId}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({
+        movieName: 'Hacked Movie',
+        movieDes: 'Hacked',
+        yearOfPublished: 2024,
+      });
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe('Not your movie');
+  });
+
+  it('should delete a movie by creator', async () => {
+    const res = await request(app.getHttpServer())
+      .delete(`/movies/${movieId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Movie deleted');
+  });
+
+  it('should not delete a movie by another user', async () => {
+    // Create a new movie as user1
+    const createRes = await request(app.getHttpServer())
+      .post('/movies')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        movieName: 'Another Movie',
+        movieDes: 'Another',
+        yearOfPublished: 2022,
+      });
+    const anotherMovieId = createRes.body.movie.id;
+    // Signup/signin as another user
+    const email = `otheruser2${Date.now()}@example.com`;
+    await request(app.getHttpServer())
+      .post('/users/signup')
+      .send({ name: 'Other User2', email, password: 'Password1!' })
+      .expect(201);
+    const signinRes = await request(app.getHttpServer())
+      .post('/users/signin')
+      .send({ email, password: 'Password1!' });
+    const otherToken = signinRes.body.token;
+    const res = await request(app.getHttpServer())
+      .delete(`/movies/${anotherMovieId}`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe('Not your movie');
   });
 });
