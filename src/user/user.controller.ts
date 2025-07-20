@@ -5,7 +5,14 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Controller, Get, Query, Body, Post, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { User } from '../models/user.model';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
@@ -60,6 +67,21 @@ class SignInDto {
 @Controller('users')
 export class UserController {
   @Post('signup')
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'John Doe' },
+        email: { type: 'string', example: 'john@example.com' },
+        password: { type: 'string', example: 'Password1!' },
+        profilePic: { type: 'string', example: 'https://example.com/john.jpg' },
+      },
+      required: ['name', 'email', 'password'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'User registered successfully', schema: { example: { user: { id: 'uuid', name: 'John Doe', email: 'john@example.com', profilePic: 'https://example.com/john.jpg', createdAt: 'date', updatedAt: 'date' } } } })
+  @ApiResponse({ status: 400, description: 'Validation or registration error' })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async signup(@Body() createUserDto: CreateUserDto) {
     try {
@@ -84,6 +106,19 @@ export class UserController {
   }
 
   @Post('signin')
+  @ApiOperation({ summary: 'Sign in a user' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', example: 'john@example.com' },
+        password: { type: 'string', example: 'Password1!' },
+      },
+      required: ['email', 'password'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'User signed in successfully', schema: { example: { user: { id: 'uuid', name: 'John Doe', email: 'john@example.com', profilePic: 'https://example.com/john.jpg', createdAt: 'date', updatedAt: 'date' }, token: 'jwt.token.here' } } })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async signin(@Body() signinDto: SignInDto) {
 
@@ -113,6 +148,10 @@ export class UserController {
   }
 
   @Get('me')
+  @ApiOperation({ summary: 'Get logged-in user details' })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: 'User details', schema: { example: { user: { id: 'uuid', name: 'John Doe', email: 'john@example.com', profilePic: 'https://example.com/john.jpg', createdAt: 'date', updatedAt: 'date' } } } })
+  @ApiResponse({ status: 401, description: 'Unauthorized or invalid token' })
   async getMe(@GetUser() userPayload: { id: string }) {
     try {
       const user = await User.findByPk(userPayload.id, {
