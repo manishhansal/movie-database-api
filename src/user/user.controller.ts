@@ -1,14 +1,39 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-import { Controller, Get, Query, Body, Post, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Query, Body, Post, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { User } from '../models/user.model';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { IsEmail, IsNotEmpty, IsOptional, Matches } from 'class-validator';
 import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { Request } from 'express';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+function extractTokenFromHeader(req: Request): string | null {
+  const auth = req.headers['authorization'];
+  if (auth && auth.startsWith('Bearer ')) {
+    return auth.slice(7);
+  }
+  return null;
+}
+
+const GetUser = createParamDecorator((data, ctx: ExecutionContext) => {
+  const req = ctx.switchToHttp().getRequest<Request>();
+  const token = extractTokenFromHeader(req);
+  if (!token) throw new UnauthorizedException('No token provided');
+  try {
+    const jwtSecret = process.env.JWT_SECRET || 'secret';
+    const payload = jwt.verify(token, jwtSecret) as any;
+    return payload;
+  } catch {
+    throw new UnauthorizedException('Invalid token');
+  }
+});
 
 class CreateUserDto {
   @IsNotEmpty({ message: 'name should not be empty' })
@@ -22,6 +47,13 @@ class CreateUserDto {
   password!: string;
   @IsOptional()
   profilePic?: string;
+}
+
+class SignInDto {
+  @IsEmail()
+  email!: string;
+  @IsNotEmpty({ message: 'password should not be empty' })
+  password!: string;
 }
 
 @ApiTags('users')
@@ -58,32 +90,58 @@ export class UserController {
       );
       return { user: userData, token };
     } catch(error: any) {
-      console.error(error);
-      throw new InternalServerErrorException('Signup failed');
+      throw new InternalServerErrorException('Signup failed', error);
     }
     
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get all users' })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    description: 'Search term for user name or email',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'List of users returned successfully.',
-  })
-  getUsers(@Query('search') _search?: string) {
-    // Example logic: fetch users, optionally filter by search
-    return [
+  @Post('signin')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  async signin(@Body() signinDto: SignInDto) {
+
+    const { email, password } = signinDto;
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const userData = user.get({ plain: true });
+    const isMatch = await bcrypt.compare(password, userData.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    delete (userData as unknown as Record<string, unknown>)['password'];
+    const jwtSecret = process.env.JWT_SECRET || 'secret';
+    const token = jwt.sign(
       {
-        id: 'uuid-1',
-        name: 'John Doe',
-        email: 'john@example.com',
-        profilePic: 'https://example.com/john.jpg',
+        id: userData.id,
+        email: userData.email,
       },
-    ];
+      jwtSecret,
+      {
+        expiresIn: '1h',
+      },
+    );
+    return { user: userData, token };
+  }
+
+  @Get('me')
+  async getMe(@GetUser() userPayload: { id: string }) {
+    try {
+      const user = await User.findByPk(userPayload.id, {
+        attributes: [
+          "id",
+          "name",
+          "email",
+          "profilePic",
+        ]
+      });
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      const userData = user.get({ plain: true });
+      return { user: userData };
+    } catch (error) {
+      throw new InternalServerErrorException('Something went wrong', error);
+    }
   }
 }
