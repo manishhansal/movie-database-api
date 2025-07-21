@@ -29,6 +29,12 @@ import { Movie } from './models/movie.model';
         autoLoadModels: true,
         synchronize: true,
         models: [User, Movie],
+        dialectOptions: {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false
+          }
+        },
       }),
       inject: [ConfigService],
     }),
