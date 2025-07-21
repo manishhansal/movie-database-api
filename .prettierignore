@@ -2,4 +2,8 @@ node_modules
 .next
 out
 dist
-package-lock.json 
+package-lock.json
+.env*
+.env
+.env.production
+.env.local
