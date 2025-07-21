@@ -7,6 +7,7 @@ import { User } from './models/user.model';
 import { UserController } from './user/user.controller';
 import { MoviesController } from './movies/movies.controller';
 import { Movie } from './models/movie.model';
+import { Dialect } from 'sequelize';
 
 @Module({
   imports: [
@@ -20,14 +21,14 @@ import { Movie } from './models/movie.model';
     SequelizeModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        dialect: 'postgres',
+        dialect: configService.get<Dialect>('DB_DIALECT'),
         host: configService.get<string>('DB_HOST'),
         port: parseInt(configService.get<string>('DB_PORT', '5432'), 10),
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE'),
         autoLoadModels: true,
-        synchronize: true,
+        synchronize: false,
         models: [User, Movie],
         dialectOptions: {
           ssl: {
